@@ -7,6 +7,17 @@ frappe.ui.form.on("S3 Integration Settings", {
 				frm.trigger("test_connection");
 			});
 		}
+
+		frm.set_query("single_file_to_migrate", () => {
+			return {
+				filters: [
+					["File", "is_folder", "=", 0],
+					["File", "file_url", "not like", "/s3/%"],
+					["File", "file_url", "not like", "http://%"],
+					["File", "file_url", "not like", "https://%"],
+				],
+			};
+		});
 	},
 
 	after_save(frm) {
@@ -79,6 +90,43 @@ frappe.ui.form.on("S3 Integration Settings", {
 				});
 			}
 		);
+	},
+
+	migrate_single_file(frm) {
+		if (!frm.doc.single_file_to_migrate) {
+			frappe.msgprint(__("Please select a File to Migrate first."));
+			return;
+		}
+
+		frappe.call({
+			method: "erpnext_s3_integration.migration.migrate_single_file",
+			args: {
+				file_name: frm.doc.single_file_to_migrate,
+				dry_run: frm.doc.single_file_dry_run,
+			},
+			freeze: true,
+			freeze_message: __("Checking file..."),
+			callback: function (r) {
+				if (r.exc || !r.message) return;
+
+				const result = r.message;
+				const rows = Object.entries(result)
+					.map(([key, value]) => `<tr><td><b>${frappe.utils.escape_html(key)}</b></td><td>${frappe.utils.escape_html(String(value))}</td></tr>`)
+					.join("");
+
+				const indicator = { migrated: "green", dry_run_no_changes_made: "blue" }[result.status] || "red";
+
+				frappe.msgprint({
+					title: __("Single File Migration Result"),
+					indicator: indicator,
+					message: `<table class="table table-bordered">${rows}</table>`,
+				});
+
+				if (result.status === "migrated") {
+					frm.set_value("single_file_to_migrate", "");
+				}
+			},
+		});
 	},
 
 	take_backup_and_sync(frm) {

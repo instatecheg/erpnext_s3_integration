@@ -26,6 +26,11 @@
         "migration_section",
         "migrate_existing_files",
         "migrate_only_unmigrated",
+        "single_file_migration_section",
+        "single_file_to_migrate",
+        "cb_single_file_migration",
+        "single_file_dry_run",
+        "migrate_single_file",
         "backups_section",
         "upload_db_backup",
         "upload_files_backup",
@@ -147,6 +152,36 @@
             "fieldname": "migrate_only_unmigrated",
             "fieldtype": "Check",
             "label": "Only migrate files not already on S3"
+        },
+        {
+            "collapsible": 1,
+            "description": "Test the migration for one file before running it on everything.",
+            "fieldname": "single_file_migration_section",
+            "fieldtype": "Section Break",
+            "label": "Single File Migration (Testing)"
+        },
+        {
+            "fieldname": "single_file_to_migrate",
+            "fieldtype": "Link",
+            "label": "File to Migrate",
+            "options": "File",
+            "description": "Search by file name. Only files not already on S3 can be selected."
+        },
+        {
+            "fieldname": "cb_single_file_migration",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "1",
+            "description": "Preview the local path and computed S3 key without uploading or changing anything.",
+            "fieldname": "single_file_dry_run",
+            "fieldtype": "Check",
+            "label": "Dry Run (Preview Only)"
+        },
+        {
+            "fieldname": "migrate_single_file",
+            "fieldtype": "Button",
+            "label": "Migrate Single File"
         },
         {
             "depends_on": "eval:doc.enable_backups_s3",
