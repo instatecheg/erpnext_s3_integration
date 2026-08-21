@@ -122,3 +122,62 @@ def run_migration(only_unmigrated):
 	message = f"Migration completed.<br>Successfully Migrated: {success_count}<br>Skipped: {skipped_count}<br>Failed: {failed_count}"
 	print(message.replace("<br>", "\n"))
 	frappe.log_error(message, "S3 Migration Summary")
+
+
+@frappe.whitelist()
+def migrate_single_file(file_name: str, dry_run: bool = True):
+	"""Diagnostic single-file migration, callable from System Console via frappe.call().
+
+	Reports the local path and computed S3 key without making changes when dry_run
+	is truthy (the default). Pass dry_run=0 to actually upload and update file_url.
+	"""
+	frappe.only_for("System Manager")
+
+	settings = frappe.get_single("S3 Integration Settings")
+	if not settings.enable_attachments_s3:
+		frappe.throw(_("S3 Attachments must be enabled to migrate files."))
+
+	doc = frappe.get_doc("File", file_name)
+
+	result = {
+		"file_name": doc.name,
+		"original_file_url": doc.file_url,
+		"is_private": doc.is_private,
+	}
+
+	if doc.file_url and doc.file_url.startswith("/s3/"):
+		result["status"] = "already_migrated"
+		return result
+	if doc.file_url and doc.file_url.startswith(("http://", "https://")):
+		result["status"] = "external_url_skipped"
+		return result
+
+	local_path = doc.get_full_path()
+	exists_locally = os.path.exists(local_path)
+	s3_key = generate_s3_key(doc, settings)
+
+	result["local_path"] = local_path
+	result["exists_locally"] = exists_locally
+	result["computed_s3_key"] = s3_key
+
+	if cint(dry_run):
+		result["status"] = "dry_run_no_changes_made"
+		return result
+
+	if not exists_locally:
+		result["status"] = "failed_missing_locally"
+		return result
+
+	from erpnext_s3_integration.s3_client import S3Client
+
+	s3_client = S3Client()
+	is_public = not doc.is_private
+	with open(local_path, "rb") as fileobj:  # nosemgrep
+		s3_client.upload_fileobj(fileobj, s3_key, doc.get("mime_type"), is_public)
+
+	frappe.db.set_value("File", doc.name, {"file_url": f"/s3/{s3_key}"}, update_modified=False)
+	frappe.db.commit()
+
+	result["status"] = "migrated"
+	result["new_file_url"] = f"/s3/{s3_key}"
+	return result
